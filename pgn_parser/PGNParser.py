@@ -70,7 +70,6 @@ class PGN(object):
                                        self.BlackRatingDiff, self.ECO, self.Opening, self.TimeControl,
                                        self.Time, self.Termination, self.moves)
 
-
     def get_pgn_dict(self):
         """
         Gets the dictionary of attributes and their values for the object.
