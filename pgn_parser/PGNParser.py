@@ -4,7 +4,7 @@ The end result is a list of PGN objects, so the .pgn file can have multiple game
 
 To run the parser, instantiate a new Parser with the .pgn file, then run parse_pgn.
 Example:
-    parser = Parser.PGNParser('my_chess_games.pgn')
+    parser = PGNParser.Parser('my_chess_games.pgn')
     games = parser.parse_pgn() # games will be a list of PGN objects
     for game in games:
         game.print_pgn()
@@ -14,6 +14,8 @@ is already handled since this is made for the Lichess database), then extra rege
 through the parse_pgn() function.
 """
 import re
+import csv
+import sys
 
 
 class PGN(object):
@@ -62,13 +64,21 @@ class PGN(object):
               self.BlackRatingDiff, self.ECO, self.Opening, self.TimeControl,
               self.Time, self.Termination, self.moves)
 
-    def __str__(self):
+    def to_string_spaces(self):
         return '{0} {1} {2} {3} {4} {5} {6} {7} {8} {9} {10} {11} {12} {13} {14} {15} {16} {17} ' \
                '{18} {19}'.format(self.Event, self.Site, self.White, self.Black, self.Result,
                                        self.Annotator, self.PlyCount, self.Date, self.UTCDate,
                                        self.UTCTime, self.WhiteElo, self.BlackElo, self.WhiteRatingDiff,
                                        self.BlackRatingDiff, self.ECO, self.Opening, self.TimeControl,
-                                       self.Time, self.Termination, self.moves)
+                                       self.Time, self.Termination, ' '.join(str(x) for x in self.moves))
+
+    def to_string_csv(self):
+        return '{0},{1},{2},{3},{4},{5},{6},{7},{8},{9},{10},{11},{12},{13},{14},{15},{16},{17},' \
+               '{18},{19}'.format(self.Event, self.Site, self.White, self.Black, self.Result,
+                                       self.Annotator, self.PlyCount, self.Date, self.UTCDate,
+                                       self.UTCTime, self.WhiteElo, self.BlackElo, self.WhiteRatingDiff,
+                                       self.BlackRatingDiff, self.ECO, self.Opening.replace(',', ''), self.TimeControl,
+                                       self.Time, self.Termination, ' '.join(str(x) for x in self.moves))
 
     def get_pgn_dict(self):
         """
@@ -123,9 +133,57 @@ class Parser(object):
                 elif line.startswith('1.'):
                     self._set_pgn_moves(line, args)
                     self.PGNList.append(self.pgn)
+                    # print('{:,.3f}'.format(sys.getsizeof(self.PGNList) / float(1 << 20)) + " MB", len(self.PGNList))
+                    # print(sys.getsizeof(self.PGNList))
+                    self.pgn = PGN()
+            for game in self.PGNList:
+                print(game.to_string_csv())
+                # print(PGN.TAGS)
+        return self.PGNList
+
+    def parse_pgn_to_csv(self, csv_name, list_write_size=1000, *args):
+        """
+        Parses the .pgn file assigned to the class.
+
+        :param csv_name: name of csv to save pgns to
+        :param list_write_size: the amount of pgns to parse before writing to csv (too high you run out of memory)
+        :param args: strings of regex to remove from move list (for comments specific to your file)
+        :return: list of PGN objects
+        """
+        with open(self.file) as infile:
+            with open(csv_name, 'w', newline='') as out_file:
+                writer = csv.writer(out_file)
+                writer.writerow(['Event', 'Site', 'White', 'Black', 'Result', 'Annotator', 'PlyCount', 'Date',
+                                 'UTCDate', 'UTCTime', 'WhiteElo', 'BlackElo', 'WhiteRatingDiff',
+                                 'BlackRatingDiff', 'ECO', 'Opening', 'TimeControl', 'Time', 'Termination', 'Moves'])
+
+            for line in infile:
+                # parse tags
+                if line.startswith('[') or line.startswith('{'):
+                    # Replace '[' and '{' because some may mess it up.
+                    for s in PGN.TAGS:
+                        if line.split(' ')[0].replace('[', '') == s:
+                            self._set_pgn_tags(line, s)
+
+                # parse move list
+                elif line.startswith('1.'):
+                    self._set_pgn_moves(line, args)
+                    self.PGNList.append(self.pgn)
+
+                    if len(self.PGNList) >= list_write_size:
+                        self._write_to_csv(csv_name)
+
                     self.pgn = PGN()
 
         return self.PGNList
+
+    def _write_to_csv(self, csv_name):
+        with open(csv_name, 'a', newline='') as out_file:
+            writer = csv.writer(out_file)
+            for game in self.PGNList:
+                writer.writerow(game.to_string_csv().split(','))
+                # print(game.to_string_csv())
+        self.PGNList = []
 
     def _set_pgn_tags(self, line, match):
         """
